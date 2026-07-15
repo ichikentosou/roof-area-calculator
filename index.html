@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<meta name="theme-color" content="#1f2933">
+<title>屋根塗装 面積計算</title>
+<style>
+:root{
+  --ink:#20262b; --muted:#68737d; --paper:#f2f0e9; --panel:#fff;
+  --line:#d7d3c8; --accent:#d88900; --accent-dark:#9b6100;
+  --ok:#2f7250; --warn:#a8502d; --soft:#f8f6f0;
+}
+*{box-sizing:border-box}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Yu Gothic",Meiryo,sans-serif;
+}
+.app{max-width:720px;margin:auto;padding:16px 14px 40px}
+header{padding:8px 2px 14px}
+h1{font-size:24px;margin:0 0 5px;letter-spacing:.02em}
+.lead{margin:0;color:var(--muted);font-size:13px;line-height:1.6}
+.card{
+  background:var(--panel); border:1px solid var(--line); border-radius:16px;
+  padding:16px; margin:12px 0; box-shadow:0 3px 12px rgba(0,0,0,.035)
+}
+.card h2{font-size:16px;margin:0 0 13px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.full{grid-column:1/-1}
+label{display:block;font-size:12px;font-weight:700;margin-bottom:6px}
+input,select,button{
+  width:100%; font:inherit; border-radius:10px; border:1px solid #c9c5bb;
+}
+input,select{height:45px;padding:0 11px;background:#fff;color:var(--ink)}
+input:focus,select:focus{outline:2px solid rgba(216,137,0,.22);border-color:var(--accent)}
+.hint{font-size:11px;color:var(--muted);line-height:1.5;margin-top:5px}
+.segment{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.segment button{
+  height:42px;background:#f6f4ef;color:var(--ink);font-weight:700;cursor:pointer
+}
+.segment button.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+.factor-row{display:grid;grid-template-columns:1fr 120px;gap:10px;align-items:end}
+.primary{
+  height:50px;background:var(--accent);border-color:var(--accent);
+  color:#fff;font-weight:800;font-size:16px;cursor:pointer
+}
+.primary:hover{background:var(--accent-dark)}
+.secondary{
+  height:42px;background:#fff;color:var(--ink);font-weight:700;cursor:pointer
+}
+.result{background:#232a30;color:#fff;border:none}
+.result h2{color:#fff}
+.hero-number{font-size:38px;font-weight:850;letter-spacing:-.02em;margin:2px 0}
+.unit{font-size:18px;font-weight:700;margin-left:5px}
+.result-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:14px}
+.metric{background:rgba(255,255,255,.08);border-radius:10px;padding:10px}
+.metric .k{font-size:11px;color:#cfd5d9}
+.metric .v{font-size:17px;font-weight:800;margin-top:3px}
+.formula{margin-top:12px;padding:11px;background:rgba(255,255,255,.08);border-radius:10px;font-size:12px;line-height:1.7;word-break:break-word}
+.notice{
+  border-left:4px solid var(--accent);background:#fff8e9;padding:10px 12px;
+  border-radius:8px;font-size:12px;line-height:1.65
+}
+details{border-top:1px solid var(--line);padding-top:12px;margin-top:12px}
+summary{cursor:pointer;font-weight:800;font-size:14px}
+.factor-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:13px}
+.factor-table th,.factor-table td{padding:9px 6px;border-bottom:1px solid #e7e3d9;text-align:left}
+.factor-table input{height:36px}
+.actions{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+.badge{display:inline-block;padding:3px 7px;border-radius:999px;background:#ede9df;font-size:10px;color:#59636b}
+.hidden{display:none!important}
+footer{text-align:center;color:var(--muted);font-size:11px;line-height:1.6;margin-top:18px}
+@media(max-width:520px){
+  .grid{grid-template-columns:1fr 1fr}
+  .factor-row{grid-template-columns:1fr 105px}
+  .hero-number{font-size:34px}
+}
+</style>
+</head>
+<body>
+<div class="app">
+<header>
+  <h1>屋根塗装 面積計算</h1>
+  <p class="lead">波形・折板・瓦棒屋根の凹凸を含む塗装面積を計算します。</p>
+</header>
+
+<section class="card">
+  <h2>1. 寸法の測り方</h2>
+  <div class="segment">
+    <button type="button" id="btnSlope" class="active">斜面の実長</button>
+    <button type="button" id="btnPlan">水平投影寸法</button>
+  </div>
+  <p id="methodHelp" class="hint">棟から軒先まで、屋根面に沿った実際の長さを入力します。勾配補正は掛けません。</p>
+</section>
+
+<section class="card">
+  <h2>2. 屋根材と寸法</h2>
+  <div class="grid">
+    <div class="full">
+      <label for="material">屋根材</label>
+      <select id="material"></select>
+    </div>
+
+    <div class="full factor-row">
+      <div>
+        <label for="factor">形状係数（1.000〜3.000）</label>
+        <input id="factor" type="number" min="1" max="3" step="0.001">
+      </div>
+      <button type="button" class="secondary" id="resetFactor">初期参考値に戻す</button>
+      <div class="hint" style="grid-column:1/-1">
+        ここでの入力は今回の計算にのみ反映されます。恒久的に変更する場合は、下の「係数を編集・保存」から保存してください。
+      </div>
+    </div>
+
+    <div>
+      <label for="width">軒方向の長さ（m）</label>
+      <input id="width" type="number" min="0" step="0.01" inputmode="decimal" placeholder="例 20">
+    </div>
+    <div>
+      <label for="length" id="lengthLabel">斜面の実長（m）</label>
+      <input id="length" type="number" min="0" step="0.01" inputmode="decimal" placeholder="例 10">
+    </div>
+    <div>
+      <label for="faces">面数</label>
+      <input id="faces" type="number" min="1" step="1" inputmode="numeric" value="1">
+    </div>
+    <div id="pitchWrap" class="hidden">
+      <label for="pitch">勾配（寸・0〜20）</label>
+      <input id="pitch" type="number" min="0" max="20" step="0.1" inputmode="decimal" value="0">
+      <div class="hint">例：3寸勾配 → 3</div>
+    </div>
+    <div>
+      <label for="deduction">控除面積（㎡）</label>
+      <input id="deduction" type="number" min="0" step="0.01" inputmode="decimal" value="0">
+    </div>
+    <div>
+      <label for="loss">見積ロス率（0〜50%）</label>
+      <input id="loss" type="number" min="0" max="50" step="0.5" inputmode="decimal" value="0">
+    </div>
+  </div>
+  <div style="margin-top:14px">
+    <button type="button" class="primary" id="calculate">面積を計算</button>
+  </div>
+</section>
+
+<section class="card result" id="resultCard" aria-live="polite">
+  <h2>計算結果</h2>
+  <div><span class="badge">見積計上数量</span></div>
+  <div class="hero-number"><span id="finalArea">0.0</span><span class="unit">㎡</span></div>
+  <div class="result-grid">
+    <div class="metric"><div class="k">寸法面積</div><div class="v"><span id="baseArea">0.0</span> ㎡</div></div>
+    <div class="metric"><div class="k">勾配補正後</div><div class="v"><span id="slopeArea">0.0</span> ㎡</div></div>
+    <div class="metric"><div class="k">凹凸補正後</div><div class="v"><span id="shapeArea">0.0</span> ㎡</div></div>
+    <div class="metric"><div class="k">控除後塗装面積</div><div class="v"><span id="netArea">0.0</span> ㎡</div></div>
+    <div class="metric"><div class="k">使用係数</div><div class="v"><span id="factorUsed">1.000</span></div></div>
+    <div class="metric"><div class="k">ロス率</div><div class="v"><span id="lossUsed">0.0</span> %</div></div>
+  </div>
+  <div class="formula" id="formula">寸法を入力して計算してください。</div>
+</section>
+
+<section class="card">
+  <div class="notice">
+    <strong>計算上の注意</strong><br>
+    「斜面の実長」を選んだ場合は、すでに勾配が長さに含まれるため勾配係数を掛けません。
+    係数は製品形状や働き幅によって変わるため、メーカー図面や現物実測を優先してください。<br>
+    控除面積は、凹凸補正後の面積（実際の塗装面）から差し引きます。開口部などは屋根面に沿って実測した値を入力してください。<br>
+    面数は同一寸法・同一勾配の面が複数あることを前提にした単純合算です。面ごとに寸法や勾配が異なる場合は、面ごとに計算して合計してください。
+  </div>
+
+  <details>
+    <summary>係数を編集・保存</summary>
+    <p class="hint">変更値はこの端末に保存されます。初期値は一般的な参考値であり、製品形状により異なります。</p>
+    <table class="factor-table">
+      <thead><tr><th>屋根材</th><th style="width:110px">係数</th></tr></thead>
+      <tbody id="factorTable"></tbody>
+    </table>
+    <div class="actions">
+      <button type="button" class="secondary" id="saveFactors">係数を保存</button>
+      <button type="button" class="secondary" id="restoreAll">初期参考値に戻す</button>
+    </div>
+  </details>
+</section>
+
+<footer>
+  概算・見積補助用。複雑な形状、重なり、端部、役物、裏面塗装は別途確認してください。<br>
+  データは端末内にのみ保存されます。
+</footer>
+</div>
+
+<script>
+const defaults = [
+  {id:'large', name:'大波スレート', factor:1.144},
+  {id:'small', name:'小波スレート', factor:1.154},
+  {id:'fold88', name:'88折板', factor:1.440},
+  {id:'fold150', name:'150折板', factor:1.690},
+  {id:'kawaraboWood', name:'瓦棒屋根（心木あり）', factor:1.240},
+  {id:'kawaraboNoWood', name:'瓦棒屋根（心木なし）', factor:1.140},
+  {id:'custom', name:'その他（手入力）', factor:1.000}
+];
+
+const $ = id => document.getElementById(id);
+let method = 'slope';
+let factors = loadFactors();
+
+function clamp(v, min, max){
+  return Math.min(max, Math.max(min, v));
+}
+
+function cloneDefaults(){
+  return defaults.map(x => ({...x}));
+}
+
+function loadFactors(){
+  try{
+    const saved = JSON.parse(localStorage.getItem('roofAreaFactors'));
+    if(!Array.isArray(saved)) return cloneDefaults();
+
+    return defaults.map(d => {
+      const hit = saved.find(s => s.id === d.id);
+      if(!hit) return {...d};
+
+      const parsed = Number(hit.factor);
+      return {
+        ...d,
+        factor: Number.isFinite(parsed) ? clamp(parsed, 1, 3) : d.factor
+      };
+    });
+  }catch(e){
+    return cloneDefaults();
+  }
+}
+
+function renderMaterial(selectedId){
+  const previousId = selectedId || $('material').value;
+
+  $('material').innerHTML = factors.map(x =>
+    `<option value="${x.id}">${x.name}</option>`
+  ).join('');
+
+  const exists = factors.some(x => x.id === previousId);
+  $('material').value = exists ? previousId : factors[0].id;
+  syncFactor();
+}
+
+function renderFactorTable(){
+  $('factorTable').innerHTML = factors.map(x => `
+    <tr>
+      <td>${x.name}</td>
+      <td><input class="factor-edit" data-id="${x.id}" type="number"
+        min="1" max="3" step="0.001" value="${Number(x.factor).toFixed(3)}"></td>
+    </tr>`).join('');
+}
+
+function currentItem(){
+  return factors.find(x => x.id === $('material').value) || factors[0];
+}
+
+function syncFactor(){
+  $('factor').value = Number(currentItem().factor).toFixed(3);
+}
+
+function setMethod(next){
+  method = next;
+  const isSlope = method === 'slope';
+
+  $('btnSlope').classList.toggle('active', isSlope);
+  $('btnPlan').classList.toggle('active', !isSlope);
+  $('pitchWrap').classList.toggle('hidden', isSlope);
+  $('lengthLabel').textContent = isSlope ? '斜面の実長（m）' : '水平の流れ長さ（m）';
+  $('methodHelp').textContent = isSlope
+    ? '棟から軒先まで、屋根面に沿った実際の長さを入力します。勾配補正は掛けません。'
+    : '平面上の流れ長さを入力し、寸勾配から斜面長さへ補正します。';
+}
+
+function n(id){
+  return Number($(id).value) || 0;
+}
+
+function fmt(v, d=1){
+  return Number(v).toLocaleString('ja-JP',{
+    minimumFractionDigits:d,
+    maximumFractionDigits:d
+  });
+}
+
+function calculate(){
+  const width = n('width');
+  const length = n('length');
+  let faces = n('faces');
+  const deduction = Math.max(0, n('deduction'));
+
+  if(width <= 0 || length <= 0){
+    alert('軒方向の長さと流れ方向の長さを入力してください。');
+    return;
+  }
+
+  const warnings = [];
+
+  if(!Number.isInteger(faces) || faces < 1){
+    const correctedFaces = Math.max(1, Math.floor(faces));
+    warnings.push(`面数は1以上の整数で入力してください（入力値 ${faces} → ${correctedFaces}面として計算します）`);
+    faces = correctedFaces;
+  }
+
+  let factor = n('factor');
+  if(factor < 1 || factor > 3){
+    const correctedFactor = clamp(factor, 1, 3);
+    warnings.push(`形状係数は1.000〜3.000の範囲で入力してください（入力値 ${factor} → ${correctedFactor.toFixed(3)}として計算します）`);
+    factor = correctedFactor;
+  }
+
+  let loss = n('loss');
+  if(loss < 0 || loss > 50){
+    const correctedLoss = clamp(loss, 0, 50);
+    warnings.push(`見積ロス率は0〜50%の範囲で入力してください（入力値 ${loss} → ${correctedLoss}%として計算します）`);
+    loss = correctedLoss;
+  }
+
+  let pitch = n('pitch');
+  if(pitch < 0 || pitch > 20){
+    const correctedPitch = clamp(pitch, 0, 20);
+    warnings.push(`勾配は0〜20寸の範囲で入力してください（入力値 ${pitch} → ${correctedPitch}寸として計算します）`);
+    pitch = correctedPitch;
+  }
+
+  const base = width * length * faces;
+  const slopeFactor = method === 'plan'
+    ? Math.sqrt(1 + Math.pow(pitch / 10, 2))
+    : 1;
+  const sloped = base * slopeFactor;
+  const shaped = sloped * factor;
+
+  if(deduction > shaped){
+    warnings.push(`控除面積 ${fmt(deduction,2)}㎡が凹凸補正後面積 ${fmt(shaped,2)}㎡を超えています。控除後塗装面積は0㎡として計算します。`);
+  }
+
+  if(warnings.length){
+    alert(warnings.join('\n'));
+  }
+
+  const afterDeduction = Math.max(0, shaped - deduction);
+  const final = afterDeduction * (1 + loss / 100);
+
+  $('baseArea').textContent = fmt(base);
+  $('slopeArea').textContent = fmt(sloped);
+  $('shapeArea').textContent = fmt(shaped);
+  $('netArea').textContent = fmt(afterDeduction);
+  $('finalArea').textContent = fmt(final);
+  $('factorUsed').textContent = factor.toFixed(3);
+  $('lossUsed').textContent = fmt(loss,1);
+
+  const methodText = method === 'plan'
+    ? `勾配係数 √(1＋(${pitch}÷10)²) ＝ ${slopeFactor.toFixed(4)}`
+    : '斜面実長入力のため、勾配係数 1.0000';
+
+  $('formula').innerHTML =
+    `${fmt(width,2)}m × ${fmt(length,2)}m × ${faces}面 ＝ ${fmt(base,2)}㎡<br>` +
+    `${methodText}<br>` +
+    `${fmt(sloped,2)}㎡ × 形状係数 ${factor.toFixed(3)} ＝ ${fmt(shaped,2)}㎡<br>` +
+    `${fmt(shaped,2)}㎡ − 控除 ${fmt(deduction,2)}㎡ ＝ ${fmt(afterDeduction,2)}㎡<br>` +
+    `${fmt(afterDeduction,2)}㎡ × ロス係数 ${(1 + loss / 100).toFixed(3)} ＝ <strong>${fmt(final,2)}㎡</strong>`;
+
+  $('resultCard').scrollIntoView({
+    behavior:'smooth',
+    block:'center'
+  });
+}
+
+$('btnSlope').addEventListener('click', () => setMethod('slope'));
+$('btnPlan').addEventListener('click', () => setMethod('plan'));
+$('material').addEventListener('change', syncFactor);
+$('calculate').addEventListener('click', calculate);
+
+$('resetFactor').addEventListener('click', () => {
+  const d = defaults.find(x => x.id === $('material').value);
+  if(d) $('factor').value = d.factor.toFixed(3);
+});
+
+$('saveFactors').addEventListener('click', () => {
+  const selectedId = $('material').value;
+  const errors = [];
+  const nextFactors = factors.map(x => ({...x}));
+
+  document.querySelectorAll('.factor-edit').forEach(inp => {
+    const item = nextFactors.find(x => x.id === inp.dataset.id);
+    if(!item) return;
+
+    const val = Number(inp.value);
+
+    if(!Number.isFinite(val) || val < 1 || val > 3){
+      errors.push(`${item.name}：1.000〜3.000で入力してください`);
+      return;
+    }
+
+    item.factor = val;
+  });
+
+  if(errors.length){
+    alert(errors.join('\n'));
+    return;
+  }
+
+  factors = nextFactors;
+
+  try{
+    localStorage.setItem('roofAreaFactors', JSON.stringify(factors));
+    renderMaterial(selectedId);
+    renderFactorTable();
+    alert('係数をこの端末に保存しました。');
+  }catch(e){
+    renderMaterial(selectedId);
+    renderFactorTable();
+    alert('保存に失敗しました。今回の画面には反映されていますが、次回この画面を開いたときは初期値に戻る場合があります。');
+  }
+});
+
+$('restoreAll').addEventListener('click', () => {
+  if(!confirm('保存した係数をすべて初期参考値に戻しますか？')) return;
+
+  const selectedId = $('material').value;
+  factors = cloneDefaults();
+
+  try{
+    localStorage.removeItem('roofAreaFactors');
+  }catch(e){
+    alert('端末保存の削除に失敗しました。画面上の表示は初期参考値に戻っています。');
+  }
+
+  renderMaterial(selectedId);
+  renderFactorTable();
+});
+
+renderMaterial();
+renderFactorTable();
+setMethod('slope');
+</script>
+</body>
+</html>
